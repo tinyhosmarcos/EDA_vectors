@@ -1,4 +1,4 @@
-// Copysecond
+// Copyright
 
 #ifndef SOURCE_RTREE_HPP_
 #define SOURCE_RTREE_HPP_
@@ -7,7 +7,7 @@
 #include <iostream>
 #include <memory>
 #include <vector>
-#include <queue>
+
 #include "Rectangle.hpp"
 
 template <size_t N, typename ElemType, size_t M, size_t m = M / 2>
@@ -37,11 +37,11 @@ class RTree {
     bool is_leaf();
 
     std::shared_ptr<Node> insert(const SpatialObject &new_entry);
-    void pickSeeds(std::vector<SpatialObject> &list, int &a, int &b);
-    int pickNext(std::vector<SpatialObject> &input_1,
-                 Rectangle<N> &bb_first,
-                 Rectangle<N> &bb_second);
-    
+	
+	void PickSeeds(std::vector<SpatialObject> &entries, size_t *first, size_t *second);
+	void PickNext(std::vector<SpatialObject> &entries, size_t *iter, Rectangle<N> &mbb_1, Rectangle<N> &mbb_2);
+	
+
     SpatialObject entry[M];
     size_t size = 0;
   };
@@ -51,7 +51,6 @@ class RTree {
   size_t dimension() const;
   size_t size() const;
   bool empty() const;
-  void print();
 
   void insert(const Rectangle<N> &box, const ElemType &value);
   std::shared_ptr<Node> choose_leaf(const std::shared_ptr<Node> &current_node,
@@ -63,26 +62,21 @@ class RTree {
                                     SpatialObject *&entry);
 
   std::shared_ptr<Node> adjust_tree(const std::shared_ptr<Node> &parent,
-                                    const std::shared_ptr<Node> &first,
-                                    const std::shared_ptr<Node> &second,
+                                    const std::shared_ptr<Node> &left,
+                                    const std::shared_ptr<Node> &right,
                                     SpatialObject *entry);
 
-  std::vector<ElemType> operator[](const Rectangle<N> &box);
-  std::vector<ElemType> at(const Rectangle<N> &box);
-  const std::vector<ElemType> at(const Rectangle<N> &box) const;
+  // TODO(ADE): Implement the details of all this functions
+  std::vector<ElemType> &operator[](const Rectangle<N> &box);
+  std::vector<ElemType> &at(const Rectangle<N> &box);
+  const std::vector<ElemType> &at(const Rectangle<N> &box) const;
   // std::vector<ElemType> kNNValue(const Rectangle<N> &box, size_t k) const;
 
-  void search(const std::shared_ptr<Node> &cur_node,
-              const Rectangle<N> &box,
-              std::vector<ElemType> &value);
-
-  //private:
+  // private:
   std::shared_ptr<Node> root_pointer_;
-  size_t entries;
 };
 
 /** Node R-tree struct implementation details*/
-
 template <size_t N, typename ElemType, size_t M, size_t m>
 typename RTree<N, ElemType, M, m>::Node::iterator
 RTree<N, ElemType, M, m>::Node::begin() {
@@ -115,30 +109,10 @@ typename RTree<N, ElemType, M, m>::SpatialObject
 
 template <size_t N, typename ElemType, size_t M, size_t m>
 typename RTree<N, ElemType, M, m>::SpatialObject
-RTree<N, ElemType, M, m>::Node::operator[](size_t index) const {
+    RTree<N, ElemType, M, m>::Node::operator[](size_t index) const {
   return entry[index];
 }
 
-template <size_t N, typename ElemType, size_t M, size_t m>
-std::vector<ElemType> RTree<N, ElemType, M, m>::operator[](const Rectangle<N> &box) {
-  std::vector<ElemType> value;
-  search(root_pointer_, box, value);
-  return value;
-}
-
-template <size_t N, typename ElemType, size_t M, size_t m>
-std::vector<ElemType> RTree<N, ElemType, M, m>::at(const Rectangle<N> &box){
-  std::vector<ElemType> value;
-  search(root_pointer_, box, value);
-  return value;
-}
-
-template <size_t N, typename ElemType, size_t M, size_t m>
-const std::vector<ElemType> RTree<N, ElemType, M, m>::at(const Rectangle<N> &box) const {
-  std::vector<ElemType> value;
-  search(root_pointer_, box, value);
-  return value;
-}
 template <size_t N, typename ElemType, size_t M, size_t m>
 bool RTree<N, ElemType, M, m>::Node::is_leaf() {
   if (size && entry[0].child_pointer) {
@@ -154,138 +128,149 @@ RTree<N, ElemType, M, m>::Node::insert(const SpatialObject &new_entry) {
     entry[size++] = new_entry;
     return nullptr;
   }
-  
- 
   // TODO(ADE): Split the entries and return a pointer to new node
   // caused due to split.
+  std::vector<SpatialObject> entries(M+1);
   std::shared_ptr<Node> new_node = std::make_shared<Node>();
-  std::vector<SpatialObject> split_list(M + 1);
-  for (size_t i = 0; i < M; ++i) {
-    split_list[i] = entry[i];
+  for(size_t i = 0; i<M; ++i){
+	  entries[i] = entry[i];
   }
-  split_list[M] = new_entry;
+  entries[M] = new_entry;
   this->size = 0;
-  
-  int first, second;
-  pickSeeds(split_list, first, second);
-  this->insert(split_list[first]);
-  new_node->insert(split_list[second]);
-  if(first > second) std::swap(first, second);
-  split_list.erase(split_list.begin() + first);
-  split_list.erase(split_list.begin() + second - 1);
-  
-  Rectangle<N> bb_first = (*this)[0].box;
-  Rectangle<N> bb_second = (*new_node)[0].box;
-  while (!split_list.empty()) {
-    if (this->size + split_list.size() == m) {
-      for (SpatialObject &obj : split_list) {
-        this->insert(obj);
-      }
-      split_list.clear();
-      continue;
-    }
-    if (new_node->size + split_list.size() == m) {
-      for (SpatialObject &obj : split_list) {
-        new_node->insert(obj);
-      }
-      split_list.clear();
-      continue;
-    }
-    int next = pickNext(split_list, bb_first, bb_second);
-    Rectangle<N> enlargement_first = split_list[next].box;
-    Rectangle<N> enlargement_second = split_list[next].box;
-    enlargement_first.adjust(bb_first);
-    enlargement_second.adjust(bb_second);
-    float area_first = enlargement_first.get_area() - split_list[next].box.get_area();
-    float area_second = enlargement_second.get_area() - split_list[next].box.get_area();
-    if (area_first < area_second ||
-        (area_first == area_second && bb_first.get_area() < bb_second.get_area()) ||
-        (area_first == area_second && bb_first.get_area() == bb_second.get_area() &&
-         this->size < new_node->size)) {
-      bb_first.adjust(split_list[next].box);
-      this->insert(split_list[next]);
-    }
-    else {
-      bb_second.adjust(split_list[next].box);
-      new_node->insert(split_list[next]);
-    }
-    split_list.erase(split_list.begin() + next);
+  size_t first, second;
+  //Pick first entry for each group
+  PickSeeds(entries, &first, &second);
+  //Assign each to a group
+  insert(entries[first]);
+  new_node->insert(entries[second]);
+  if(first > second){
+	  std::swap(first,second);
+  }
+  entries.erase(entries.begin() + first);
+  entries.erase(entries.begin() + second - 1);
+  Rectangle<N> d1 = (*this).box;
+  Rectangle<N> d2 = (*new_node).box;
+  Rectangle<N> enlargement_box_g1, enlargement_box_g2;
+  float area_g1, area_g2;
+  size_t iter;
+  //Repeat from QS2 and QS3 if not empty
+  while(!entries.empty()){
+	  //Check if done
+	  //If all entries have been assigned, stop
+	  if(size + entries.size() == m){
+		  for(auto &e : entries){
+			  insert(e);
+		  }
+		  entries.clear();
+		  continue;
+	  }
+	  //If one group has so few entries have been assigned in order, stop
+	  else if(new_node->size + entries.size() == m){
+		  for(auto &e : entries){
+			  insert(e);
+		  }
+		  entries.clear();
+		  continue;
+	  }
+	  //If not done select the entry to assign it
+	  else{
+		  //INvoke PickNext
+		  PickNext(entries,iter,d1,d2);
+		  //Rectangles that will have to be enlarged
+		  enlargement_box_g1 = d1;
+		  enlargement_box_g1.adjust(entries[iter].box);
+		  area_g1 = enlargement_box_g1.get_area() - d1.get_area();
+		  enlargement_box_g2 = d2;
+		  enlargement_box_g2.adjust(entries[iter].box);
+		  area_g2 = enlargement_box_g2.get_area() - d2.get_area();
+		  //Resolve ties by adding the entry to the group with smallest area
+		  if(area_g1 < area_g2 || 
+			 (area_g1 == area_g2 && d1.get_area() < d2.get_area()) ||
+			 (area_g1 == area_g2 && d1.get_area() == d2.get_area()) &&
+			 size < new_node->size){
+			  d1.adjust(entries[iter].box);
+			  //Add it to the group
+			  insert(entries[iter]);
+		  }
+		  else{
+			  d2.adjust(entries[iter].box);
+			  //Add it to the group
+			  insert(entries[iter]);
+		  }
+		  entries.erase(entries.begin()+iter);
+	  }
   }
   return new_node;
 }
 
 template <size_t N, typename ElemType, size_t M, size_t m>
-void RTree<N, ElemType, M, m>::Node::pickSeeds(std::vector<SpatialObject> &input_1,int &seed_1, int &seed_2) {
-  seed_1 = 0, seed_2 = 1;
-  float area;
-  Rectangle<N> temp_box = input_1[seed_1].box;
-  float limit_area = temp_box.get_area();
-  temp_box.adjust(input_1[seed_2].box);
-  limit_area -= (input_1[seed_1].box.get_area() + input_1[seed_2].box.get_area());
-  for (int i = 0; i < M; ++i) {
-    for (int j = i+1; j <= M; ++j) {
-      temp_box = input_1[i].box;
-      temp_box.adjust(input_1[j].box);
-      area = temp_box.get_area() - input_1[i].box.get_area() - input_1[j].box.get_area();
-      if (area > limit_area) {
-        limit_area = area;
-        seed_1 = i;
-        seed_2 = j;
-      }
-    }
-  }
+void RTree<N, ElemType, M, m>::Node::PickSeeds(std::vector<SpatialObject> &entries, size_t *first, size_t *second){
+	//Calculate inefficiency of grouping entries together
+	Rectangle<N> enlargement_box;
+	float max_area = 0.0f;
+	for(size_t i = 0; i<M; ++i){
+		for(size_t j = i+1; j<M; ++j){
+			enlargement_box = entries[i].box;
+			enlargement_box.adjust(entries[j].box);
+			float d = enlargement_box.get_area() - entries[i].box.get_area() - entries[j].box.get_area();
+			max_area = d;
+			if(d > max_area){
+				//most wasteful pair with the largest d(area)
+				//max_area = d; 
+				*first = i;
+				*second = j;
+			}
+		}
+	}
 }
 
 template <size_t N, typename ElemType, size_t M, size_t m>
-int RTree<N, ElemType, M, m>::Node::pickNext(std::vector<SpatialObject> &input_1,
-                                             Rectangle<N> &bb_first,
-                                             Rectangle<N> &bb_second) {
-  int ind = 0;
-  Rectangle<N> enlargement_first = input_1[0].box;
-  Rectangle<N> enlargement_second = input_1[0].box;
-  enlargement_first.adjust(bb_first);
-  enlargement_second.adjust(bb_second);
-  float area_first = enlargement_first.get_area() - input_1[0].box.get_area();
-  float area_second = enlargement_second.get_area() - input_1[0].box.get_area();
-  float max_d = abs(area_first - area_second);
-  float area_d;
-  for (int i = 1; i < input_1.size(); ++i) {
-    enlargement_first = input_1[i].box;
-    enlargement_second = input_1[i].box;
-    enlargement_first.adjust(bb_first);
-    enlargement_second.adjust(bb_second);
-    area_first = enlargement_first.get_area() - input_1[i].box.get_area();
-    area_second = enlargement_second.get_area() - input_1[i].box.get_area();
-    area_d = abs(area_first - area_second);
-    if (area_d > max_d) {
-      max_d = area_d;
-      ind = i;
-    }
-  }
-  return ind;
+void RTree<N, ElemType, M, m>::Node::PickNext(std::vector<SpatialObject> &entries, size_t *iter, Rectangle<N> &mbb_1, Rectangle<N> &mbb_2){
+	//Determine the cost of putting each entry in each group
+	Rectangle<N> rectangle_group1, rectangle_group2;
+	float d1, d2; //area increase required in the covering rectangle of each group
+	float max_difference_area = 0.0f;
+	for(size_t i = 0; i<entries.size(); ++i){
+		rectangle_group1 = mbb_1;
+		rectangle_group1.adjust(entries[i].box);
+		d1 = rectangle_group1.get_area() - mbb_1.get_area();
+		rectangle_group2 = mbb_2;
+		rectangle_group2.adjust(entries[j].box);
+		d2 = rectangle_group2.get_area() - mbb_2.get_area();
+		//Find entry with greatest preference for one group
+		float d = (d1 - d2);
+		if(d > max_difference_area){
+			max_difference_area = d;
+			*iter = i;
+		}
+	}
 }
 
 /** R-Tree class implementation details */
 
 template <size_t N, typename ElemType, size_t M, size_t m>
-RTree<N, ElemType, M, m>::RTree() : root_pointer_(std::make_shared<Node>()), entries(0) {}
+RTree<N, ElemType, M, m>::RTree() : root_pointer_(new Node) {}
 
+// TODO(ADE):
 template <size_t N, typename ElemType, size_t M, size_t m>
-RTree<N, ElemType, M, m>::~RTree() { root_pointer_.reset(); }
+RTree<N, ElemType, M, m>::~RTree() {}
 
+// TODO(ADE):
 template <size_t N, typename ElemType, size_t M, size_t m>
 size_t RTree<N, ElemType, M, m>::dimension() const {
-  return N;
+  return size_t(0);
 }
 
+// TODO(ADE):
 template <size_t N, typename ElemType, size_t M, size_t m>
 size_t RTree<N, ElemType, M, m>::size() const {
-  return entries;
+  return size_t(0);
 }
 
+// TODO(ADE):
 template <size_t N, typename ElemType, size_t M, size_t m>
 bool RTree<N, ElemType, M, m>::empty() const {
-  return !entries;
+  return false;
 }
 
 template <size_t N, typename ElemType, size_t M, size_t m>
@@ -295,12 +280,8 @@ void RTree<N, ElemType, M, m>::insert(const Rectangle<N> &box,
   if (!splitted_node) {
     return;
   }
-  // Split the root !
-  std::shared_ptr<Node> new_root = std::make_shared<Node>();
-  (*new_root)[0].child_pointer = root_pointer_;
-  (new_root->size)++;
-  adjust_tree(new_root, root_pointer_, splitted_node, &(*new_root)[0]);
-  root_pointer_ = new_root;
+  // TODO(ADE): Last part of insert is missing i.e. when the root overflow
+  // see R-tree gutman paper description.
 }
 
 template <size_t N, typename ElemType, size_t M, size_t m>
@@ -317,8 +298,6 @@ RTree<N, ElemType, M, m>::choose_leaf(const std::shared_ptr<Node> &current_node,
   SpatialObject new_entry;
   new_entry.box = box;
   new_entry.identifier = value;
-  new_entry.child_pointer = nullptr;
-  entries++;
   return current_node->insert(new_entry);
 }
 
@@ -327,16 +306,19 @@ std::shared_ptr<typename RTree<N, ElemType, M, m>::Node>
 RTree<N, ElemType, M, m>::choose_node(const std::shared_ptr<Node> &current_node,
                                       const Rectangle<N> &box,
                                       SpatialObject *&entry) {
+  float minimum_area = (*current_node)[0].box.get_area();
+
   Rectangle<N> enlarged_box = (*current_node)[0].box;
   enlarged_box.adjust(box);
-  float minimum_area = (*current_node)[0].box.get_area();
   float minimum_enlargement = enlarged_box.get_area() - minimum_area;
-  std::shared_ptr<Node> node = (*current_node)[0].child_pointer;
+
   float enlargement, area;
+  std::shared_ptr<Node> node = (*current_node)[0].child_pointer;
 
   entry = &(*current_node)[0];
   for (SpatialObject &current_entry : *current_node) {
     area = current_entry.box.get_area();
+
     enlarged_box = current_entry.box;
     enlarged_box.adjust(box);
     enlargement = enlarged_box.get_area() - area;
@@ -349,77 +331,30 @@ RTree<N, ElemType, M, m>::choose_node(const std::shared_ptr<Node> &current_node,
       entry = &current_entry;
     }
   }
+
   return node;
 }
 
 template <size_t N, typename ElemType, size_t M, size_t m>
 std::shared_ptr<typename RTree<N, ElemType, M, m>::Node>
 RTree<N, ElemType, M, m>::adjust_tree(const std::shared_ptr<Node> &parent,
-                                      const std::shared_ptr<Node> &first,
-                                      const std::shared_ptr<Node> &second,
+                                      const std::shared_ptr<Node> &left,
+                                      const std::shared_ptr<Node> &right,
                                       SpatialObject *entry) {
   entry->box.reset();
-  for (SpatialObject current_entry : *first) {
+  for (SpatialObject current_entry : *left) {
     entry->box.adjust(current_entry.box);
   }
-  if (!second) {
+  if (!right) {
     return nullptr;
   }
   SpatialObject new_entry;
   new_entry.box.reset();
-  for (SpatialObject &current_entry : *second) {
+  for (SpatialObject &current_entry : *right) {
     new_entry.box.adjust(current_entry.box);
   }
-  new_entry.child_pointer = second;
+  new_entry.child_pointer = right;
   return parent->insert(new_entry);
-}
-
-
-template <size_t N, typename ElemType, size_t M, size_t m>
-void RTree<N, ElemType, M, m>::search(const std::shared_ptr<Node> &cur_node,
-                                      const Rectangle<N> &box,
-                                      std::vector<ElemType> &value){
-  for (SpatialObject &obj : *cur_node) {
-    if (overlaps(obj.box, box)) {
-      if (cur_node->is_leaf()) {
-        value.push_back(obj.identifier);
-      }
-      else {
-        search(obj.child_pointer, box, value);
-      }
-    }
-  }
-}
-
-
-
-
-template <size_t N, typename ElemType, size_t M, size_t m>
-void RTree<N, ElemType, M, m>::print() {
-  std::cout<<"Printing the tree ...";
-  int lastLvl = -1;
-  std::queue<std::pair<std::shared_ptr<Node>, int> > Q;
-  Q.push(make_pair(root_pointer_, 0));
-  while (!Q.empty()) {
-    std::shared_ptr<Node> current = Q.front().first;
-    int lvl = Q.front().second;
-    Q.pop();
-    if (lvl != lastLvl) {
-      std::cout<<std::endl;
-      lastLvl = lvl;
-    }
-    std::cout<<"{ | ";
-    for (SpatialObject &obj : *current) {
-      std::cout<<(obj.identifier.size() ? obj.identifier : "IN");
-      std::cout<<":("<<obj.box[0].begin()<<","<<obj.box[0].end()<<") - ";
-      std::cout<<"("<<obj.box[1].begin()<<","<<obj.box[1].end()<<") | ";
-      if (!current->is_leaf()) {
-        Q.push(make_pair(obj.child_pointer, lvl+1));
-      }
-    }
-    std::cout<<"} ";    
-  }
-  std::cout<<"\n";
 }
 
 #endif  // SOURCE_RTREE_HPP_
